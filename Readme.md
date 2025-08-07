@@ -1,13 +1,14 @@
-### 🧠 Built With
+# 🤖 AI & Automation Employment Analysis
 
-- [Quarto (.qmd)](https://quarto.org/)
+This Quarto project explores how Artificial Intelligence and automation are reshaping employment, wages, and skill requirements across industries. It answers three core questions with data-driven analysis and compelling visuals.
+
+## 🧠 Built With
+
+- Quarto (.qmd)
 - Language: **R**
 
 ![R](https://img.shields.io/badge/Language-R-blue.svg)
 
-# 🤖 AI & Automation Employment Analysis
-
-This Quarto project explores how Artificial Intelligence and automation are reshaping employment, wages, and skill requirements across industries. It answers three core questions with data-driven analysis and compelling visuals.
 
 ---
 
