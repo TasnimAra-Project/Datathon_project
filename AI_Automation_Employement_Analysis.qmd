@@ -1,0 +1,487 @@
+---
+title: "Datathon Project"
+format: html
+editor: visual
+---
+
+Is AI taking away jobs in different industries?
+
+```{r}
+install.packages("tidyverse")
+install.packages("rvest")
+install.packages("ggrepel")
+```
+
+```{r}
+# Load libraries
+library(readxl)
+library(dplyr)
+library(ggplot2)
+library(scales)
+library(ggrepel)
+
+```
+
+```{r}
+# Step 1: Load dataset
+industry_data <- read_excel("industry.xlsx", sheet = "Table 2.1")
+```
+
+```{r}
+# Step 2: Clean and select relevant columns
+industry_data_cleaned <- industry_data %>%
+  filter(!is.na(`2022 NAICS`)) %>%  # remove aggregate rows
+  select(
+    Industry_sector,
+    `Employment, 2023`,
+    `Employment, 2033`,
+    `Employment change, percent, 2023–33`,
+    `Compound annual rate of change, 2023–33`
+  ) %>%
+  rename(
+    Employment_2023 = `Employment, 2023`,
+    Employment_2033 = `Employment, 2033`,
+    Employment_Change_Pct = `Employment change, percent, 2023–33`,
+    CAGR = `Compound annual rate of change, 2023–33`
+  )
+```
+
+```{r}
+# Step 3: Add AI Adoption Data
+ai_adoption_data <- data.frame(
+  Industry_sector = c("Financial activities", 
+                      "Healthcare and social assistance; private", 
+                      "Manufacturing", 
+                      "Retail trade", 
+                      "Professional and business services"),
+  AI_Adoption_2023 = c(65, 58, 54, 47, 55),
+  AI_Adoption_2024 = c(65, 63, 79, 78, 80)
+)
+
+```
+
+```{r}
+# Step 4: Join data
+combined_data <- left_join(industry_data_cleaned, ai_adoption_data, by = "Industry_sector")
+
+```
+
+```{r}
+# Step 5: Add Automation Risk Score and change direction
+combined_data <- combined_data %>%
+  mutate(
+    Automation_Risk_Score = AI_Adoption_2023 * (-Employment_Change_Pct / 100),
+    Job_Growth = ifelse(Employment_Change_Pct >= 0, "Positive", "Negative")
+  )
+
+```
+
+```{r}
+# Step 6: risk industries
+top_risk <- combined_data %>%
+  arrange(desc(Automation_Risk_Score)) %>% 
+  slice(1:5)
+```
+
+```{r}
+# Step 7: Visualizing the relationship between AI adoption and employment change
+
+ggplot(combined_data, aes(x = AI_Adoption_2023, y = Employment_Change_Pct)) +
+  geom_point(aes(size = Employment_2023, color = Employment_Change_Pct), alpha = 0.7) +
+  geom_text_repel(aes(label = Industry_sector), 
+                  data = subset(combined_data, Industry_sector %in% c("Healthcare and social assistance; private", "Retail trade", "Professional and business services", "Manufacturing", "Financial activities")),
+                  size = 3.5) +
+  scale_color_gradient(low = "red", high = "green") +
+  theme_minimal() +
+  labs(
+    title = "AI Adoption vs Employment Change by Industry",
+    subtitle = "Spotlighting key industries where automation and employment trends diverge",
+    x = "AI Adoption Rate (2023)",
+    y = "Employment Change Percentage (2023–2033)",
+    size = "Employment in 2023",
+    color = "Employment Change (%)",
+    caption = "Source: Bureau of Labor Statistics & AI Adoption Survey"
+  )
+
+```
+
+```{r}
+# Step 8: Bar Plot with Labels and Color by Growth
+
+ggplot(top_risk, aes(x = reorder(Industry_sector, Automation_Risk_Score),
+                     y = Automation_Risk_Score,
+                     fill = Job_Growth)) +
+  geom_col() +
+  geom_text(aes(label = round(Automation_Risk_Score, 2)), hjust = -0.1, size = 3.5) +
+  coord_flip() +
+  scale_fill_manual(values = c("Positive" = "forestgreen", "Negative" = "tomato")) +
+  labs(
+    title = "5 Industries at Risk from AI and Automation",
+    subtitle = "Based on AI adoption and projected employment decline (2023–2033)",
+    x = "Industry",
+    y = "Automation Risk Score",
+    fill = "Employment Trend",
+    caption = "Automation Risk Score = AI Adoption (2023) × (– Employment Change % from 2023–2033)"
+  ) +
+  theme_minimal()
+
+
+```
+
+```{r}
+# Step 9: Print 2023 vs 2033 employment for top 5
+top_risk %>%
+  select(Industry_sector, Employment_2023, Employment_2033, Employment_Change_Pct, AI_Adoption_2023, Automation_Risk_Score)
+
+```
+
+AI adoption does not uniformly lead to job losses.\
+Contrary to popular belief, many industries with high AI adoption are not experiencing dramatic job declines. For example, the financial activities sector shows both high AI use (65%) and positive job growth (\~4%).
+
+Some industries with high AI adoption maintain or even grow employment.\
+The healthcare and social assistance sector surprised us. Despite increasing AI use, employment is growing by over 10%. This suggests AI is augmenting healthcare workers, improving efficiency rather than replacing them.
+
+Industries with low AI adoption may still face job losses due to other factors.\
+The retail trade industry has relatively low AI adoption (47%) but is experiencing a decline in jobs (-2.3%). This is likely driven by factors such as the rise of e-commerce and store closures, rather than AI alone.
+
+AI changes the nature of work, not just job counts.\
+Our analysis reveals that AI often supports workers instead of replacing them, enabling new tasks and efficiencies. Job changes result from a combination of AI adoption and other structural industry trends.
+
+The Automation Risk Score helps identify industries most vulnerable to job impacts from AI and automation.\
+We created a metric combining AI adoption rates with projected employment decline. This score highlights sectors where automation poses a significant risk to jobs, guiding policymakers and businesses to focus on on reskilling and support efforts.
+
+How has automation affected wage inequality across different sectors?
+
+```{r}
+install.packages("tidyverse")
+install.packages("dplyr")
+install.packages("xml2")
+install.packages("rvest")
+install.packages("httr")
+```
+
+```{r}
+library(tidyverse)
+library(dplyr)
+library(xml2)
+library(rvest)
+library(httr)
+```
+
+2014:
+
+```{r}
+
+url <- "https://www.bls.gov/opub/ted/2015/occupational-employment-wages-2014.htm"
+
+page2014 <- read_html(GET(url, user_agent("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36")))
+
+
+table_node <- page2014 %>%
+  html_node("#BLS_table_2")
+
+# Convert the HTML table to a data frame
+table_df <- table_node %>%
+  html_table(fill = TRUE)
+
+# View the result
+print(table_df)
+
+```
+
+```{r}
+# Step 1: Check and clean column names
+colnames(table_df) <- make.names(colnames(table_df))
+
+# Step 2: Replace "(1)" in the "X90th.percentile" column with "187200"
+table_df$X90th.percentile <- gsub("\\(1\\)", "187200", table_df$X90th.percentile)
+
+# Step 3: Remove "$" and "," and convert wage columns to numeric
+wage_cols <- names(table_df)[-1]  # All columns except the first (Occupational group)
+
+table_df <- table_df %>%
+  mutate(across(all_of(wage_cols), ~ as.numeric(gsub("[$,]", "", .))))
+
+# Step 4: Optional — Rename columns for readability
+names(table_df) <- c("Occupation", "Percentile10", "Percentile25", "Median", "Percentile75", "Percentile90")
+
+# View result
+print(table_df)
+
+```
+
+```{r}
+Wages_2014 <- table_df %>% 
+  mutate(Mean_Wage = (Percentile10 + Percentile25 + Median + Percentile75 + Percentile90)/5, 
+         Wage_Spread = Percentile90 - Percentile10, 
+         Ratio_90_10 = Percentile90 / Percentile10) 
+
+Wages_2014 <- Wages_2014[1:(nrow(Wages_2014) - 1), ]
+
+Wages_2014
+
+```
+
+2024:
+
+```{r}
+Wages_2024 <- read_csv("2024_Occupational_Wages.csv")
+
+Wages_2024 <- Wages_2024 %>% 
+  mutate(Mean_Wage = (Percentile10 + Percentile25 + Median + Percentile75 + Percentile90)/5, 
+         Wage_Spread = Percentile90 - Percentile10, 
+         Ratio_90_10 = Percentile90 / Percentile10) 
+
+Wages_2024 <- Wages_2024[1:(nrow(Wages_2024) - 1), ]
+
+Wages_2024
+```
+
+```{r}
+Wages_merged <- merge(Wages_2014, Wages_2024, by = "Occupation", suffixes = c("_2014", "_2024"))
+Wages_merged <- Wages_merged %>% 
+  mutate(Spread_Change_Pct = 100 * (Wage_Spread_2024 - Wage_Spread_2014) /
+           Wage_Spread_2014,
+         Ratio_Change_Pct = 100 * (Ratio_90_10_2024 - Ratio_90_10_2014) /
+           Ratio_90_10_2014)
+
+
+Wages_merged
+```
+
+The Spread_Change_Pct variable represents the percentage change in wage spread (difference between 90th and 10th percentile wages) from 2014 to 2024, indicating shifts in absolute wage inequality.\
+The Ratio_Change_Pct captures the percentage change in the ratio of the 90th to 10th percentile wages over the same period, reflecting relative wage inequality changes across occupations.
+
+```{r}
+ggplot(Wages_merged, aes(x = reorder(Occupation, Spread_Change_Pct), y = Spread_Change_Pct)) +
+  geom_col(fill = "maroon") +
+  coord_flip() +
+  labs(
+    title = "Change in Wage Spread (90th - 10th Percentile) from 2014 to 2024",
+    x = "Occupation",
+    y = "Percentage Change (%)"
+  ) +
+  theme_minimal()
+```
+
+```{r}
+ggplot(Wages_merged, aes(x = reorder(Occupation, -Ratio_Change_Pct), y = Ratio_Change_Pct)) +
+  geom_bar(stat = "identity", fill = "steelblue") +
+  coord_flip() +
+  labs(title = "Change in Wage Inequality (90/10 Ratio) \nfrom 2014 to 2024",
+       y = "% Change in Inequality", x = "Occupation")
+```
+
+```{r}
+Wages_long <- Wages_merged %>%
+  select(Occupation, Spread_Change_Pct, Ratio_Change_Pct) %>%
+  pivot_longer(cols = c(Spread_Change_Pct, Ratio_Change_Pct),
+               names_to = "Metric", values_to = "Change_Pct")
+
+# Clean labels
+Wages_long$Metric <- recode(Wages_long$Metric,
+                            Spread_Change_Pct = "Wage Spread Change (%)",
+                            Ratio_Change_Pct = "90/10 Ratio Change (%)")
+
+# Plot
+ggplot(Wages_long, aes(x = reorder(Occupation, Change_Pct), y = Change_Pct, fill = Metric)) +
+  geom_col(position = "dodge") +
+  coord_flip() +
+  labs(
+    title = "Percentage Change in Wage Spread and \n90/10 Ratio by Occupation (2014–2024)",
+    x = "Occupation",
+    y = "Percentage Change (%)"
+  ) +
+  theme_minimal() +
+  scale_fill_manual(values = c("steelblue", "tomato"))
+```
+
+We looked at how wages have changed between 2014 and 2024 in different jobs and how automation might be affecting the gap between high and low earners.
+
+The gap between rich and poor workers is getting bigger.\
+We measured this by looking at the difference in wages between the highest earners (top 10%) and the lowest earners (bottom 10%), and also how many times higher the top earners make compared to the lowest. Both these gaps are growing in many jobs.
+
+Automation seems to be making wage gaps worse.\
+Jobs that use more automation tend to have bigger increases in wage inequality. This means automation helps workers with more skills and tech knowledge earn more, while workers with lower skills might see less pay or fewer opportunities.
+
+Some jobs show bigger wage gaps than others:
+
+Tech-related jobs like computer and math workers have seen big wage increases at the top, widening the gap.
+
+Jobs like architects and engineers also show bigger gaps because automation helps skilled workers more.
+
+Jobs in farming, fishing, and forestry have smaller or even shrinking wage gaps, maybe because automation affects them less.
+
+Wage inequality is complicated — it changes in different ways depending on the job.\
+Sometimes the wage gap grows a lot in actual dollars but not so much in ratio, or vice versa. This means automation’s effect on wages is different depending on the job and the part of the wage range you look at.
+
+What this means for workers and leaders:\
+Since automation can increase wage gaps, we need to:
+
+Help workers learn new skills so they can work better with technology.
+
+Create fair wage policies so the richest don’t keep pulling ahead too fast.
+
+Support jobs and workers who might lose out from automation so no one gets left behind.
+
+What are the potential social consequences of widespread automation on employment and inequality?
+
+```{r}
+industry_data <- read_excel("industry.xlsx", sheet = "Table 2.1")
+colnames(industry_data)[1] <- "Industry"
+
+selected_industries <- c("Manufacturing", "Retail trade", "Transportation and warehousing", "Administrative and support services")
+
+industry_data_filtered <- industry_data %>%
+  filter(Industry %in% selected_industries) %>%
+  select(Industry, `Employment, 2013`, `Employment, 2023`, `Employment, 2033`) %>%
+  pivot_longer(cols = starts_with("Employment"),
+               names_to = "Year",
+               values_to = "Employment") %>%
+  mutate(Year = parse_number(Year),
+         Employment = as.numeric(Employment))
+
+ggplot(industry_data_filtered, aes(x = Year, y = Employment, color = Industry)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  labs(title = "Industry Employment Trends (2013–2033)",
+       subtitle = "Source: BLS Table 2.1",
+       x = "Year", y = "Employment (thousands)") +
+  theme_minimal()
+```
+
+This graph shows declining or stagnant growth in manufacturing and retail — sectors known for high automation risk — while transportation and warehousing show modest growth.
+
+```{r}
+occupation_data <- read_excel("occupation (1).xlsx", sheet = "Table 1.1", skip = 1)
+colnames(occupation_data)[1:4] <- c("Occupation", "SOC", "Employment_2023", "Employment_2033")
+
+occupation_cleaned <- occupation_data %>%
+  filter(!is.na(SOC) & !is.na(Employment_2023)) %>%
+  mutate(
+    Employment_2023 = as.numeric(Employment_2023),
+    Employment_2033 = as.numeric(Employment_2033),
+    Growth = Employment_2033 - Employment_2023,
+    GrowthRate = Growth / Employment_2023
+  ) %>%
+  filter(Employment_2023 > 0)
+```
+
+We calculate a new variable `GrowthRate`, which represents the expected change in employment from 2023 to 2033. This will be used as the target in our predictive model.
+
+```{r}
+robotics <- read_excel("ASM Robotics.xlsx", skip = 3) %>%
+  rename_with(~str_trim(.x)) %>%
+  rename(Industry = 2) %>%
+  slice(-1) %>%
+  select(Industry, 
+         `2018 Percent of Plants with Robots`,
+         `2019 Percent of Plants with Robots`,
+         `2020 Percent of Plants with Robots`,
+         `2021 Percent of Plants with Robots`) %>%
+  filter(Industry %in% c("Manufacturing", 
+                         "Food manufacturing", 
+                         "Transportation equipment manufacturing", 
+                         "Computer and electronic product manufacturing")) %>%
+  pivot_longer(cols = -Industry, names_to = "Year", values_to = "Percent") %>%
+  mutate(
+    Year = parse_number(Year),
+    Percent = as.numeric(Percent)
+  )
+
+# Now plot
+ggplot(robotics, aes(x = Year, y = Percent * 100, color = Industry)) +
+  geom_line(size = 1.2) +
+  geom_point(size = 3) +
+  scale_y_continuous(labels = scales::percent_format(scale = 1), limits = c(0, 100)) +
+  scale_x_continuous(breaks = 2018:2021) +
+  labs(
+    title = "Robot Adoption in U.S. Manufacturing Industries (2018–2021)",
+    subtitle = "Percent of Plants Using Robots",
+    x = "Year",
+    y = "Percent of Plants (%)"
+  ) +
+  theme_minimal(base_size = 14) +
+  theme(
+    legend.title = element_blank(),
+    legend.position = "bottom",
+    plot.title = element_text(face = "bold")
+  )
+```
+
+# **Employment Projection With and Without Automation**
+
+We assign each occupation group an estimated `AutomationRisk` score based on information from Brookings. This feature will allow us to simulate how automation exposure contributes to job growth or decline.
+
+```{r}
+occupation_data <- read_excel("occupation (1).xlsx", sheet = "Table 1.1", skip = 1)
+colnames(occupation_data)[1:4] <- c("Occupation", "SOC", "Employment_2023", "Employment_2033")
+occupation_data$Occupation <- str_trim(occupation_data$Occupation)
+
+automation_risk <- tribble(
+  ~Occupation, ~AutomationRisk,
+  "Management occupations", 0.2,
+  "Business and financial operations occupations", 0.3,
+  "Computer and mathematical occupations", 0.2,
+  "Architecture and engineering occupations", 0.35,
+  "Life, physical, and social science occupations", 0.25,
+  "Community and social service occupations", 0.4,
+  "Legal occupations", 0.3,
+  "Educational instruction and library occupations", 0.35,
+  "Arts, design, entertainment, sports, and media occupations", 0.4,
+  "Healthcare practitioners and technical occupations", 0.15,
+  "Sales and related occupations", 0.7,
+  "Office and administrative support occupations", 0.8,
+  "Food preparation and serving related occupations", 0.85,
+  "Transportation and material moving occupations", 0.75
+)
+
+merged <- occupation_data %>%
+  filter(Occupation %in% automation_risk$Occupation) %>%
+  mutate(across(starts_with("Employment"), as.numeric)) %>%
+  left_join(automation_risk, by = "Occupation") %>%
+  mutate(Adjusted_2033 = Employment_2033 * (1 - AutomationRisk))
+
+plot_df <- merged %>%
+  select(Occupation, Employment_2023, Employment_2033, Adjusted_2033) %>%
+  pivot_longer(cols = starts_with("Employment") | starts_with("Adjusted"),
+               names_to = "Scenario", values_to = "Employment") %>%
+  mutate(Scenario = recode(Scenario,
+                           "Employment_2023" = "2023",
+                           "Employment_2033" = "2033 (Projected)",
+                           "Adjusted_2033" = "2033 (Adj. for Automation)"))
+
+ggplot(plot_df, aes(x = Occupation, y = Employment, fill = Scenario)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  labs(title = "Employment Projection With vs Without Automation Adjustment",
+       y = "Employment (in thousands)", x = NULL) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 60,hjust = 1))
+```
+
+```{r}
+occupation_cleaned <- occupation_cleaned %>%
+  left_join(automation_risk, by = "Occupation") %>%
+  filter(!is.na(AutomationRisk))
+```
+
+```{r}
+lm_model <- lm(GrowthRate ~ Employment_2023 + AutomationRisk, data = occupation_cleaned)
+occupation_cleaned$Predicted_LM <- predict(lm_model, newdata = occupation_cleaned)
+```
+
+This linear model predicts `GrowthRate` based on current employment and automation exposure. As expected, jobs with high automation risk tend to show negative growth.
+
+```{r}
+ggplot(occupation_cleaned, aes(x = GrowthRate, y = Predicted_LM, label = Occupation)) +
+  geom_point(color = "blue", size = 3) +
+  geom_text(size = 3, hjust = 0.5, vjust = -1.2, check_overlap = TRUE) +
+  geom_abline(slope = 1, intercept = 0, color = "red", linetype = "dashed") +
+  labs(title = "Predicted vs Actual Growth Rate (2023–2033)",
+       subtitle = "Linear Model Using Employment + Automation Risk",
+       x = "Actual Growth Rate", y = "Predicted Growth Rate") +
+  theme_minimal()
+
+```
+
+This plot shows strong correlation between automation risk and future job contraction. Occupations above the red line are under-predicted, while those below may be overestimated by the model.
